@@ -1,66 +1,80 @@
-# GhostTab - AI-Powered Clipboard Manager
+# Ghost Tab - Clipboard Manager
 
-GhostTab is a Chrome extension that enhances your clipboard management with AI-powered suggestions and smart organization. It uses Claude 3 Haiku to provide context-aware clipboard suggestions and text generation capabilities.
+Ghost Tab is a Chrome extension that provides a smart clipboard history for your browser. It captures everything you copy (Ctrl+C) on any web page and makes it available in a searchable, filterable popup. You can also quickly copy or delete any previous clipboard item.
+
+---
 
 ## Features
 
-- **Smart Clipboard History**: Automatically captures and stores your clipboard content
-- **AI-Powered Suggestions**: Uses Claude 3 Haiku to suggest relevant clipboard items based on context
-- **Text Generation**: Generate new text completions based on your current context
-- **Search & Filter**: Easily find specific items in your clipboard history
-- **Log Management**: Download and clear LLM interaction logs
-- **Secure Storage**: API keys and sensitive data are stored securely in Chrome's sync storage
+- **Automatic Clipboard History:** Every time you copy (Ctrl+C) on any page, the text is saved to your clipboard history.
+- **Popup UI:** View, search, filter, copy, or delete any clipboard item from the extension popup.
+- **Clear History:** One-click to clear all clipboard history.
+- **No Offscreen/Background Clipboard Reading:** All clipboard capture is done via content scripts for maximum reliability.
+- **No Unnecessary Permissions:** Only the permissions needed for clipboard, storage, and UI are requested.
+
+---
 
 ## Installation
 
-1. Clone this repository
-2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable "Developer mode" in the top right
-4. Click "Load unpacked" and select the extension directory
+1. Clone or download this repository.
+2. Go to `chrome://extensions/` in your browser.
+3. Enable "Developer mode" (top right).
+4. Click "Load unpacked" and select the extension directory.
 
-## Configuration
-
-1. Click the extension icon and select "Options"
-2. Enter your Claude API key
-3. Configure the backend URL (default: http://localhost:5000/receive_context)
-4. Save your settings
+---
 
 ## Usage
 
-- **View Clipboard History**: Click the extension icon to see your recent clipboard items
-- **Search Items**: Use the search box to filter clipboard items
-- **Clear History**: Click the "Clear History" button to remove all items
-- **Download Logs**: Access the options page to download or clear LLM interaction logs
+- **Copy as usual:** Use Ctrl+C (or Cmd+C) on any web page. The copied text will be added to your clipboard history.
+- **Open the popup:** Click the Ghost Tab icon in your browser toolbar to view your clipboard history.
+- **Search/filter:** Use the search bar to filter your clipboard items.
+- **Copy or delete:** Use the "Copy" or "Delete" buttons next to each item.
+- **Clear all:** Use the "Clear" button to remove all clipboard history.
+
+---
+
+## How it Works
+
+- **Content Script (`clipboard-monitor.js`):** Listens for `copy` events on every page and sends the copied text to the background script.
+- **Background Script (`background.js`):** Stores clipboard history in Chrome's local storage and responds to popup requests.
+- **Popup (`popup.html` + `clipboard.js`):** Displays the clipboard history and provides UI for copying, deleting, and searching items.
+
+---
+
+## Permissions
+
+- `storage`: To save your clipboard history.
+- `clipboardRead`/`clipboardWrite`: To allow copying from the popup.
+- `activeTab`, `scripting`, `contextMenus`, `tabs`, `downloads`, `commands`: For UI and optional features.
+
+---
+
+## Troubleshooting
+
+- **Nothing appears in the popup:** Make sure you are copying text on a regular web page (not inside the popup). Reload the extension and refresh your tabs.
+- **"Unrecognized manifest key 'offscreen'":** Remove the `"offscreen"` block from your `manifest.json`.
+- **"Extension context invalidated":** Reload the extension and refresh your tabs. This is a Chrome limitation; see the FAQ in this README.
+
+---
+
+## FAQ
+
+**Q: Why doesn't the extension read my clipboard contents directly?**  
+A: For privacy and security, Chrome only allows clipboard reading in focused, visible contexts (like content scripts). This extension captures what you copy, not what is already in your clipboard.
+
+**Q: Why do I see 'Extension context invalidated' errors?**  
+A: This happens if the extension is reloaded or updated while a content script is still running. Reload the extension and refresh your tabs.
+
+---
 
 ## Development
 
-### Project Structure
+- All clipboard monitoring is handled by `clipboard-monitor.js` (content script).
+- The background script only manages storage and responds to messages.
+- The popup UI is in `popup.html` and `clipboard.js`.
 
-- `popup.html` - Main extension popup interface
-- `popup.js` - Popup functionality and UI interactions
-- `background.js` - Background service worker for clipboard monitoring
-- `llm.js` - LLM integration and text processing
-- `options.js` - Extension options and settings management
-- `styles.css` - Extension styling
-
-### Building
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Build the extension:
-   ```bash
-   npm run build
-   ```
-
-## Security
-
-- API keys are stored securely in Chrome's sync storage
-- Clipboard data is processed locally before being sent to the LLM
-- All network requests are made over HTTPS
+---
 
 ## License
 
-MIT License - See LICENSE file for details 
+MIT 

@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Ghost Tab with Clipboard History",
+    "name": "Ply",
     "description": "Shows ghost suggestions in text inputs and maintains a history of clipboard items.",
     "version": "0.3.0",
     "icons": {
