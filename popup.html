@@ -1,37 +1,108 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GhostTab - Clipboard Manager</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Ghost Tab Clipboard</title>
+    <link rel="stylesheet" href="clipboard.css">
+    <style>
+        /* Additional popup-specific styles */
+        body 
+        {
+            padding: 0;
+            margin: 0;
+            min-width: 350px;
+        }
+        
+        .popup-container 
+        {
+            width: auto;
+            margin: 0;
+            border-radius: 0;
+            box-shadow: none;
+            max-height: 450px;
+            overflow-y: auto;
+        }
+        
+        h1 
+        {
+            font-size: 16px;
+            padding: 8px 0;
+            margin-bottom: 8px;
+        }
+        
+        .header-actions 
+        {
+            margin-bottom: 10px;
+        }
+        
+        #filter-input 
+        {
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+        
+        button 
+        {
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+        
+        .clipboard-item 
+        {
+            padding: 8px 10px;
+        }
+        
+        .item-text 
+        {
+            font-size: 12px;
+        }
+        
+        .item-timestamp 
+        {
+            font-size: 10px;
+        }
+        
+        .empty-message 
+        {
+            padding: 20px;
+            font-size: 12px;
+        }
+        
+        /* Updated button styles */
+        #refresh-history 
+        {
+            background-color: #f0f0f0;
+            color: #333;
+            border-color: #ddd;
+        }
+        
+        #refresh-history:hover 
+        {
+            background-color: #e0e0e0;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>GhostTab</h1>
-            <div class="controls">
-                <button id="refreshButton" title="Refresh Clipboard">
-                    <svg viewBox="0 0 24 24" width="16" height="16">
-                        <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-                    </svg>
-                </button>
-                <button id="clearHistoryButton" title="Clear History">
-                    <svg viewBox="0 0 24 24" width="16" height="16">
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                    </svg>
-                </button>
+    <div class="container popup-container">
+        <h1>Recent Clipboard Items</h1>
+        
+        <div class="header-actions">
+            <div class="search-bar">
+                <input type="text" id="filter-input" placeholder="Search...">
+            </div>
+            <div class="action-buttons">
+                <button id="refresh-history" title="Refresh clipboard history">Refresh</button>
+                <button id="clear-history">Clear</button>
             </div>
         </div>
-
-        <div class="search-container">
-            <input type="text" id="filterInput" placeholder="Search clipboard history...">
+        
+        <div id="clipboard-history">
+            <!-- Clipboard items will be added here dynamically -->
+            <div class="empty-message">Loading clipboard history...</div>
         </div>
-
-        <div id="clipboardItems" class="clipboard-items">
-            <!-- Clipboard items will be inserted here -->
-        </div>
-
-        <div id="notification" class="notification"></div>
     </div>
-    <script src="popup.js"></script>
+    
+    <div id="notification" class="notification"></div>
+    
+    <script src="clipboard.js"></script>
 </body>
 </html> 

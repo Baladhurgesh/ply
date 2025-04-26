@@ -1,70 +1,70 @@
 // offscreen.js
 
-// --- Debug Flag ---
-const DEBUG_MODE = true; // Set to true to enable offscreen script logging
+// Listen for messages from the background script
+chrome.runtime.onMessage.addListener(handleMessages);
 
-// --- Helper Debug Logging Functions ---
-function debugLog(...args) {
-    if (DEBUG_MODE) {
-        console.log("OFFSCREEN LOG:", ...args);
-    }
+async function handleMessages(message, sender, sendResponse) {
+  if (message.target !== 'offscreen') {
+    return; // Ignore messages not intended for the offscreen document
+  }
+
+  switch (message.type) {
+    case 'read-clipboard':
+      try {
+        const clipboardText = await readClipboard();
+        sendResponse({ success: true, text: clipboardText });
+      } catch (error) {
+        console.error('Offscreen: Error reading clipboard:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+      // Indicate that the response will be sent asynchronously
+      return true; 
+    default:
+      console.warn(`Offscreen: Unrecognized message type received: ${message.type}`);
+      sendResponse({ success: false, error: 'Unrecognized message type' });
+  }
 }
-function debugWarn(...args) {
-    if (DEBUG_MODE) {
-        console.warn("OFFSCREEN WARN:", ...args);
-    }
-}
-function debugError(...args) {
-    if (DEBUG_MODE) {
-        console.error("OFFSCREEN ERROR:", ...args);
-    }
-}
 
-// --- Clipboard Textarea ---
-const clipboardTextarea = document.createElement('textarea');
-clipboardTextarea.style.position = 'absolute';
-clipboardTextarea.style.left = '-999px';
-clipboardTextarea.style.top = '-999px';
-document.body.appendChild(clipboardTextarea);
-
-// --- Message Handling ---
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    debugLog("Received message:", message);
-    
-    if (message.type === 'read-clipboard') {
-        debugLog("Reading clipboard...");
-        readClipboard()
-            .then(text => {
-                debugLog("Clipboard read successfully");
-                sendResponse({ success: true, text });
-            })
-            .catch(error => {
-                debugError("Error reading clipboard:", error);
-                sendResponse({ success: false, error: error.message });
-            });
-        return true; // Keep the message channel open for async response
-    }
-    
-    return false;
-});
-
-// --- Clipboard Reading ---
+// Function to read clipboard content using the textarea
 async function readClipboard() {
-    try {
-        // Focus the textarea
-        clipboardTextarea.focus();
-        
-        // Try to read clipboard
-        const text = await navigator.clipboard.readText();
-        debugLog("Clipboard content:", text);
-        return text;
-    } catch (error) {
-        debugError("Error reading clipboard:", error);
-        throw error;
-    }
-}
+  const textarea = document.getElementById('clipboard-textarea');
+  if (!textarea) {
+    throw new Error('Clipboard textarea not found in offscreen document.');
+  }
 
-// --- Initialization ---
-debugLog("Offscreen document initialized");
+  // Clear previous content
+  textarea.value = '';
+
+  // Focus the textarea. It's crucial this document has focus, 
+  // which it should as an active offscreen document.
+  textarea.focus();
+
+  try {
+    // Modern async clipboard API (preferred if it works in offscreen)
+    // Note: This might still require user interaction/gesture in some contexts,
+    // but it's worth trying in the offscreen document.
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      // console.log("Offscreen: Trying navigator.clipboard.readText()...");
+      const text = await navigator.clipboard.readText();
+      // console.log("Offscreen: readText() successful.");
+      return text;
+    }
+  } catch (err) {
+    //  console.warn('Offscreen: navigator.clipboard.readText() failed, falling back to execCommand.', err);
+  }
+
+  // Fallback using document.execCommand('paste')
+  // console.log("Offscreen: Falling back to document.execCommand('paste')...");
+  const successful = document.execCommand('paste');
+  if (!successful) {
+    // console.error("Offscreen: execCommand('paste') failed.");
+    throw new Error('Failed to execute paste command.');
+  }
+
+  const clipboardText = textarea.value;
+  // console.log("Offscreen: execCommand('paste') successful.");
+  textarea.value = ''; // Clear after reading
+  return clipboardText;
+}
 
 console.log("Offscreen script loaded."); // Log to confirm loading 

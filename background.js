@@ -1,20 +1,22 @@
+// background.js
+
 // --- Debug Flag ---
-const DEBUG_MODE = true; // Set to true to enable background script logging
+const DEBUG_MODE = false; // Set to true to enable background script logging
 
 // --- Helper Debug Logging Functions ---
 function debugLog(...args) {
     if (DEBUG_MODE) {
-        console.log("BACKGROUND LOG:", ...args);
+        console.log("BG LOG:", ...args);
     }
 }
 function debugWarn(...args) {
     if (DEBUG_MODE) {
-        console.warn("BACKGROUND WARN:", ...args);
+        console.warn("BG WARN:", ...args);
     }
 }
 function debugError(...args) {
     if (DEBUG_MODE) {
-        console.error("BACKGROUND ERROR:", ...args);
+        console.error("BG ERROR:", ...args);
     }
 }
 
@@ -37,10 +39,6 @@ let lastClipboardContent = '';
 let creatingOffscreenDocument = null; // Promise to prevent race condition
 let activeApiCall = false; // Flag to prevent concurrent API calls from same tab
 let apiCallQueue = {}; // Queue requests per tab: { tabId: [ { message, sender, sendResponse }, ... ] }
-let isInitialized = false;
-let initializationPromise = null;
-let initializationAttempts = 0;
-const MAX_INIT_ATTEMPTS = 3;
 
 // --- Import LLM function ---
 // NOTE: Static imports work in service workers. Ensure llm.js is in the root.
@@ -51,157 +49,50 @@ try {
   console.error("BACKGROUND FATAL: Failed to import llm.js", e); // Keep this as console.error
 }
 
-// --- Offscreen Document Management ---
-let offscreenDocument = null;
-
-async function createOffscreenDocument() {
-    debugLog("Creating offscreen document...");
-    try {
-        // Check if offscreen document already exists
-        const existingContexts = await chrome.runtime.getContexts({
-            contextTypes: ['OFFSCREEN_DOCUMENT']
-        });
-        
-        if (existingContexts.length > 0) {
-            debugLog("Offscreen document already exists");
-            return true;
-        }
-        
-        // Create new offscreen document
-        await chrome.offscreen.createDocument({
-            url: 'offscreen.html',
-            reasons: ['CLIPBOARD'],
-            justification: 'Read clipboard content'
-        });
-        
-        debugLog("Offscreen document created successfully");
-        return true;
-    } catch (error) {
-        debugError("Error creating offscreen document:", error);
-        return false;
-    }
-}
-
-// --- Permission Management ---
-async function requestPermissions() {
-    debugLog("Requesting permissions...");
-    try {
-        const permissions = {
-            permissions: ['clipboardRead'],
-            origins: ['<all_urls>']
-        };
-        
-        const granted = await chrome.permissions.request(permissions);
-        debugLog("Permission request result:", granted);
-        return granted;
-    } catch (error) {
-        debugError("Error requesting permissions:", error);
-        return false;
-    }
-}
-
-// --- Clipboard History Management ---
-let clipboardHistory = [];
-
-async function initializeStorage() {
-    debugLog("Initializing storage...");
-    try {
-        const result = await chrome.storage.local.get('clipboardHistory');
-        clipboardHistory = result.clipboardHistory || [];
-        debugLog("Storage initialized with", clipboardHistory.length, "items");
-        return true;
-    } catch (error) {
-        debugError("Error initializing storage:", error);
-        return false;
-    }
-}
 
 // --- Initialization ---
-async function initializeExtension() {
-    if (isInitialized) {
-        debugLog("Extension already initialized");
-        return true;
-    }
-
-    if (initializationPromise) {
-        debugLog("Initialization already in progress");
-        return initializationPromise;
-    }
-
-    if (initializationAttempts >= MAX_INIT_ATTEMPTS) {
-        debugError("Max initialization attempts reached");
-        throw new Error("Max initialization attempts reached");
-    }
-
-    initializationAttempts++;
-    debugLog(`Starting initialization attempt ${initializationAttempts}`);
-
-    initializationPromise = (async () => {
-        try {
-            // Initialize storage
-            const currentStorage = await chrome.storage.local.get('clipboardHistory');
-            if (!currentStorage.clipboardHistory) {
-                await chrome.storage.local.set({ clipboardHistory: [...DEFAULT_CLIPBOARD_ITEMS] });
-                debugLog("Clipboard history initialized with defaults");
-            }
-
-            // Initialize other storage keys
-            await chrome.storage.sync.set({ claudeApiKey: '' });
-            await chrome.storage.local.set({ llmLogs: [] });
-            await chrome.storage.local.set({ acceptedSuggestionsLog: [] });
-
-            // Setup context menu
-            await setupContextMenu();
-
-            // Start clipboard monitoring
-            await startClipboardMonitoring();
-
-            isInitialized = true;
-            debugLog("Extension initialized successfully");
-            return true;
-        } catch (error) {
-            debugError("Error during initialization:", error);
-            isInitialized = false;
-            throw error;
-        } finally {
-            initializationPromise = null;
-        }
-    })();
-
-    return initializationPromise;
-}
-
-// --- Event Listeners ---
 chrome.runtime.onInstalled.addListener(async () => {
-    try {
-        await initializeExtension();
-    } catch (error) {
-        debugError("Failed to initialize on install:", error);
+    debugLog('GhostTab onInstalled/onUpdated event fired.');
+
+    // --- Initialize Clipboard History ONLY IF IT DOESN'T EXIST ---
+    const currentStorage = await chrome.storage.local.get('clipboardHistory');
+    if (!currentStorage.clipboardHistory) {
+        // The key doesn't exist, so initialize it with defaults
+        await chrome.storage.local.set({ clipboardHistory: [...DEFAULT_CLIPBOARD_ITEMS] });
+        debugLog('Clipboard history initialized with defaults.');
+    } else {
+        // The key already exists, do nothing to preserve existing history
+        debugLog('Clipboard history already exists, skipping default initialization.');
     }
+    // --- End Clipboard History Initialization ---
+
+    // Initialize other storage keys (these are likely safe to reset/ensure they exist)
+    await chrome.storage.sync.set({ claudeApiKey: '' }); // Initialize API key storage
+    await chrome.storage.local.set({ llmLogs: [] }); // Initialize logs storage
+    await chrome.storage.local.set({ acceptedSuggestionsLog: [] }); // <-- Initialize accepted logs storage
+    debugLog('Other storage keys initialized/ensured.');
+    
+    await setupContextMenu();
+    await startClipboardMonitoring(); // Ensure monitoring starts on install/update
 });
 
+// Ensure context menu is set up on browser startup as well
 chrome.runtime.onStartup.addListener(async () => {
-    try {
-        await initializeExtension();
-    } catch (error) {
-        debugError("Failed to initialize on startup:", error);
-    }
+    debugLog('GhostTab starting up...');
+    await setupContextMenu();
+    await startClipboardMonitoring(); // Restart monitoring on startup
 });
+
 
 // --- Context Menu ---
 async function setupContextMenu() {
-    try {
-        await chrome.contextMenus.removeAll();
-        await chrome.contextMenus.create({
-            id: 'open-clipboard',
-            title: 'Open Clipboard History',
-            contexts: ['all']
-        });
-        debugLog("Context menu created successfully.");
-    } catch (error) {
-        debugError("Failed to create context menu:", error);
-        throw error;
-    }
+    await chrome.contextMenus.removeAll();
+    await chrome.contextMenus.create({
+        id: 'open-clipboard',
+        title: 'Open Clipboard History',
+        contexts: ['all']
+    });
+    debugLog("Context menu created.");
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -212,23 +103,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // --- Clipboard Monitoring ---
 async function startClipboardMonitoring() {
-    try {
-        // Check permissions
-        const hasPermission = await chrome.permissions.contains({ permissions: ['clipboardRead', 'offscreen'] });
-        if (!hasPermission) {
-            debugError('Missing required permissions: clipboardRead, offscreen');
-            throw new Error('Missing required permissions');
-        }
-
-        // Setup offscreen document
-        await setupOffscreenDocument();
-        
-        // Start periodic clipboard checking
+    // Check permissions (optional, but good practice)
+    const hasPermission = await chrome.permissions.contains({ permissions: ['clipboardRead', 'offscreen'] });
+    if (hasPermission) {
         checkClipboardPeriodically();
-        debugLog('Clipboard monitoring started successfully.');
-    } catch (error) {
-        debugError('Failed to start clipboard monitoring:', error);
-        throw error;
+        debugLog('Clipboard monitoring started/resumed.');
+    } else {
+        // Keep permission warnings visible
+        console.warn('Clipboard monitoring requires clipboardRead and offscreen permissions.');
     }
 }
 
@@ -255,32 +137,32 @@ async function hasOffscreenDocument() {
 }
 
 async function setupOffscreenDocument() {
+    // Check if the document already exists.
     if (await hasOffscreenDocument()) {
-        debugLog("Offscreen document already exists");
+        debugLog("Offscreen document already exists.");
         return;
     }
 
+    // Avoid race conditions where multiple calls try to create the document simultaneously.
     if (creatingOffscreenDocument) {
-        debugLog("Offscreen document creation already in progress");
+        debugLog("Offscreen document creation already in progress. Waiting...");
         await creatingOffscreenDocument;
-        return;
-    }
-
-    debugLog("Creating offscreen document...");
-    creatingOffscreenDocument = chrome.offscreen.createDocument({
-        url: OFFSCREEN_DOCUMENT_PATH,
-        reasons: [chrome.offscreen.Reason.CLIPBOARD],
-        justification: 'Reading clipboard text requires DOM access'
-    });
-
-    try {
-        await creatingOffscreenDocument;
-        debugLog("Offscreen document created successfully");
-    } catch (error) {
-        debugError("Error creating offscreen document:", error);
-        throw error;
-    } finally {
-        creatingOffscreenDocument = null;
+    } else {
+        debugLog("Creating offscreen document...");
+        creatingOffscreenDocument = chrome.offscreen.createDocument({
+            url: OFFSCREEN_DOCUMENT_PATH,
+            reasons: [chrome.offscreen.Reason.CLIPBOARD],
+            justification: 'Reading clipboard text requires DOM access.',
+        });
+        try {
+            await creatingOffscreenDocument;
+            debugLog("Offscreen document created successfully.");
+        } catch (error) {
+            // Keep errors visible
+            console.error("Error creating offscreen document:", error);
+        } finally {
+            creatingOffscreenDocument = null;
+        }
     }
 }
 
@@ -288,123 +170,285 @@ async function setupOffscreenDocument() {
 async function readClipboardViaOffscreen() {
     await setupOffscreenDocument(); // Ensure the document exists
 
-    debugLog("Sending message to offscreen document...");
+    debugLog("Background: Sending message to offscreen document to read clipboard...");
     try {
         const response = await chrome.runtime.sendMessage({
             type: 'read-clipboard',
-            target: 'offscreen'
+            target: 'offscreen',
         });
-        
+        debugLog("Background: Received response from offscreen:", response);
         if (response && response.success) {
             return response.text;
         } else {
-            throw new Error(response?.error || 'Failed to read clipboard');
+             throw new Error(response?.error || 'Failed to read clipboard via offscreen document.');
         }
     } catch (error) {
-        if (error.message.includes("Could not establish connection")) {
-            debugWarn("Connection to offscreen document failed");
-        } else {
-            debugError("Error reading clipboard:", error);
-        }
-        return null;
+         // Handle potential errors like the offscreen document not being ready
+         if (error.message.includes("Could not establish connection")) {
+             // Keep warnings visible
+             console.warn("Background: Connection to offscreen document failed. It might be closing or not ready. Retrying setup might be needed.");
+             // Optionally, implement retry logic or clearer error handling here
+         } else {
+            // Keep errors visible
+            console.error("Background: Error messaging offscreen document:", error);
+         }
+         return null; // Indicate failure
     }
 }
 
+
 // --- Core Clipboard Check Logic ---
 async function checkClipboard(callback) {
-    debugLog("Checking clipboard...");
+    debugLog("Background: checkClipboard called");
     try {
         const clipText = await readClipboardViaOffscreen();
 
-        if (clipText !== null) {
-            debugLog(`Clipboard content: "${clipText ? clipText.substring(0, 30) + '...' : '<empty>'}"`);
-            
+        if (clipText !== null) { // Check if read was successful
+             debugLog(`Background: Clipboard content received: "${clipText ? clipText.substring(0, 30) + '...' : '<empty>'}"`);
+            // Only process if the clipboard content has changed
             if (clipText && clipText !== lastClipboardContent) {
-                debugLog("Clipboard content changed");
+                debugLog("Background: Clipboard content changed. Updating history.");
                 lastClipboardContent = clipText;
                 addToClipboardHistory(clipText);
+            } else if (clipText === lastClipboardContent) {
+                 debugLog("Background: Clipboard content unchanged.");
+            } else {
+                 debugLog("Background: Clipboard content is empty.");
             }
+        } else {
+            // Keep warning visible
+            console.warn("Background: Failed to read clipboard content via offscreen.");
         }
-    } catch (error) {
-        debugError("Error checking clipboard:", error);
+
+    } catch (e) {
+        // Keep errors visible
+        console.error('Background: Failed to check clipboard:', e);
     } finally {
+        // Execute callback if provided, regardless of success/failure
         if (typeof callback === 'function') {
+            debugLog("Background: Executing checkClipboard callback.");
             callback();
         }
     }
 }
 
+
 // --- Message Handling ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    debugLog("Received message:", message);
-
-    if (!message || !message.action) {
-        debugWarn("Invalid message format");
-        sendResponse({ success: false, error: "Invalid message format" });
+    debugLog("BACKGROUND: Received message:", message, "from sender:", sender);
+    // --- LLM Suggestion/Generation Request --- 
+    if (message.action === 'getLLMSuggestions') {
+        const requestingTabId = sender?.tab?.id;
+        if (!requestingTabId) {
+            console.warn("Background: getLLMSuggestions request missing tab ID.");
+            sendResponse({ success: false, error: "Missing sender tab ID", suggestions: [] });
+            return false; // Should not be async if returning error immediately
+        }
+        debugLog(`Background: Received getLLMSuggestions request from tab: ${requestingTabId}. IsGeneration: ${message.isGenerationRequest}`);
+        handleLLMSuggestionRequest(message, sender, sendResponse); // Pass the whole message object
+        return true; // Indicate async response
+    }
+    // --- Other Actions (addToClipboard, getClipboardHistory, etc.) ---
+    else if (message.action === 'addToClipboard') {
+        debugLog("Background: Received addToClipboard message (likely from content script copy event)");
+        addToClipboardHistory(message.text);
+        sendResponse({ success: true });
+        lastClipboardContent = message.text; // Update last known content
         return false;
+    } else if (message.action === 'getClipboardHistory') {
+        getClipboardHistory(sendResponse);
+        return true; // Return true for async response
+    } else if (message.action === 'clearClipboardHistory') {
+        clearClipboardHistory(sendResponse);
+        return true; // Return true for async response
+    } else if (message.action === 'checkClipboard') {
+        debugLog("Background: Received checkClipboard message (likely from popup)");
+        checkClipboard(() => {
+            sendResponse({ success: true });
+        });
+        return true; // Return true for async response
+    // --- Log Handling Messages --- 
+    } else if (message.action === 'getLLMLogs') {
+        getLLMLogs(sendResponse);
+        return true; // Async
+    } else if (message.action === 'clearLLMLogs') {
+        clearLLMLogs(sendResponse);
+        return true; // Async
+    // --- Accepted Suggestion Logging --- 
+    } else if (message.action === 'logAcceptedSuggestion') {
+        debugLog("Background: Received logAcceptedSuggestion message");
+        addAcceptedLogEntry(message.data);
+        // No need to send a response unless required for confirmation
+        // sendResponse({ success: true }); 
+        return false; // Synchronous handling is fine here
     }
-
-    if (message.action === 'checkInitialization') {
-        debugLog("Checking initialization status");
-        sendResponse({ success: true, initialized: isInitialized });
-        return false;
-    }
-
-    if (!isInitialized) {
-        debugWarn("Extension not initialized yet");
-        initializeExtension()
-            .then(() => handleMessage(message, sender, sendResponse))
-            .catch(error => {
-                debugError("Initialization failed:", error);
-                sendResponse({ 
-                    success: false, 
-                    error: "Initialization failed: " + error.message,
-                    retryable: initializationAttempts < MAX_INIT_ATTEMPTS
-                });
-            });
-        return true;
-    }
-
-    return handleMessage(message, sender, sendResponse);
+    // --- End Message Handling Blocks ---
+    debugWarn(`Background: Unhandled message action: ${message.action}`);
+    return false; // Indicate synchronous handling if action not matched
 });
 
-async function handleMessage(message, sender, sendResponse) {
-    try {
-        switch (message.action) {
-            case 'getClipboardHistory':
-                debugLog("Getting clipboard history");
-                const result = await chrome.storage.local.get('clipboardHistory');
-                sendResponse({ success: true, items: result.clipboardHistory || [] });
-                return false;
+// --- Command Handling ---
+chrome.commands.onCommand.addListener(async (command) => {
+    debugLog(`Background: Command received: ${command}`);
+    // Find the active tab
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-            case 'addToClipboard':
-                debugLog("Adding to clipboard history");
-                addToClipboardHistory(message.text);
-                sendResponse({ success: true });
-                return false;
-
-            case 'clearClipboardHistory':
-                debugLog("Clearing clipboard history");
-                await chrome.storage.local.set({ clipboardHistory: [] });
-                lastClipboardContent = '';
-                sendResponse({ success: true });
-                return false;
-
-            case 'checkClipboard':
-                debugLog("Checking clipboard");
-                checkClipboard(() => sendResponse({ success: true }));
-                return true;
-
-            default:
-                debugWarn("Unknown action:", message.action);
-                sendResponse({ success: false, error: "Unknown action" });
-                return false;
-        }
-    } catch (error) {
-        debugError("Error handling message:", error);
-        sendResponse({ success: false, error: error.message });
-        return false;
+    if (!activeTab || !activeTab.id) {
+        // Keep warning visible
+        console.warn("Background: Could not find active tab to send command to.");
+        return;
     }
+
+    let messageAction = null;
+    if (command === 'trigger-llm-suggestion') {
+        messageAction = 'requestContextForManualTrigger';
+    } else if (command === 'fill-suggestion-word') {
+        messageAction = 'fillWordByWord';
+    } else if (command === 'commit-suggestion-alias') {
+        messageAction = 'commitSuggestionAlias';
+    }
+
+    if (messageAction) {
+        debugLog(`Background: Sending ${messageAction} to tab ${activeTab.id}`);
+        try {
+            // Send the appropriate message to the content script in the active tab
+            await chrome.tabs.sendMessage(activeTab.id, { action: messageAction });
+        } catch (error) {
+            // Keep errors visible
+            console.error(`Background: Error sending message to tab ${activeTab.id}:`, error);
+            // Handle potential errors, e.g., content script not injected or tab closed
+        }
+    } else {
+         debugWarn(`Background: Unknown command received: ${command}`);
+    }
+});
+
+/**
+ * Handles the request for LLM suggestions/generation.
+ * Fetches history, API key, calls LLM, and sends response.
+ * Relies on flags in the message object to determine mode.
+ */
+async function handleLLMSuggestionRequest(message, sender, sendResponse) { // Added message parameter
+    const requestingTabId = sender?.tab?.id;
+    // Note: Tab ID checked in listener now
+
+    // Function to send hide message (keep as is)
+    const sendHideMessage = async () => {
+        debugLog(`Background: Sending hideProcessing to tab ${requestingTabId}`);
+        try {
+            await chrome.tabs.sendMessage(requestingTabId, { action: 'hideProcessing' });
+        } catch (error) { console.error(`Background: Error sending hideProcessing:`, error); }
+    };
+
+    // --- Extract data from message --- 
+    const contextData = message.contextData;
+    const isGenerationRequest = message.isGenerationRequest || false; // Default to suggestion
+    const instruction = message.instruction || null;
+    const actionType = isGenerationRequest ? "Generation" : "Suggestion";
+    // --- End Extract ---
+
+    // Initial checks
+    if (!contextData) {
+        debugWarn(`LLM Handler (${actionType}): Received null context data.`);
+        // Don't call sendHideMessage here, content script handles indicator on response
+        sendResponse({ success: false, error: "Missing context data", suggestions: [] });
+        return;
+    }
+    if (typeof getRelevantClipboardItems !== 'function') {
+        console.error(`LLM Handler (${actionType}): Required LLM functions not found. Import failed?`);
+        // Don't call sendHideMessage here
+        sendResponse({ success: false, error: "LLM functions not available", suggestions: [] });
+        return;
+    }
+
+    // Get API Key (keep as is)
+    let apiKey = ""; // TODO: Retrieve securely
+    
+    try {
+        // 1. Get Clipboard History (only needed for suggestions)
+        let clipboardHistory = [];
+        if (!isGenerationRequest) {
+            // Check if contextData has history override (e.g., for testing) 
+            // If not, fetch from storage
+            if (contextData.overrideHistory) { // Example override flag
+                 clipboardHistory = contextData.overrideHistory;
+                 debugLog("LLM Handler: Using override history from contextData");
+            } else {
+                const historyData = await chrome.storage.local.get('clipboardHistory');
+                clipboardHistory = historyData.clipboardHistory || [];
+                debugLog(`LLM Handler: Fetched ${clipboardHistory.length} items from storage for suggestion.`);
+            }
+        }
+
+        // 2. Call Main LLM - Pass mode and instruction explicitly
+        debugLog(`LLM Handler: Calling getRelevantClipboardItems for ${actionType}...`);
+        const suggestions = await getRelevantClipboardItems(
+            contextData, 
+            clipboardHistory, // Pass history (empty for generation)
+            apiKey,
+            isGenerationRequest, // Pass explicit flag
+            instruction          // Pass explicit instruction (null for suggestion)
+        );
+        debugLog(`LLM Handler: Received final ${actionType} response:`, suggestions);
+
+        // 3. Send Response 
+        // Don't call sendHideMessage here, content script hides on receiving response
+        sendResponse({ success: true, suggestions: suggestions });
+
+    } catch (error) {
+        console.error(`LLM Handler: Error during ${actionType} flow:`, error);
+        // Don't call sendHideMessage here
+        sendResponse({ success: false, error: error.message, suggestions: [] });
+    }
+}
+
+
+// --- Clipboard History Storage ---
+function addToClipboardHistory(text) {
+    if (!text || text.trim() === '') {
+         debugLog("Background: Skipping adding empty text to history.");
+         return; // Don't add empty text
+    }
+
+    chrome.storage.local.get('clipboardHistory', function(data) {
+        let history = data.clipboardHistory || [];
+
+        // Prevent exact duplicates
+        const isDuplicate = history.some(item => item.text === text);
+        if (isDuplicate) {
+             debugLog("Background: Skipping duplicate text entry.");
+             return;
+        }
+
+        // Add new entry at the beginning
+        history.unshift({
+            text: text,
+            timestamp: new Date().toISOString()
+        });
+
+        // Limit history to 50 items
+        if (history.length > 50) {
+            history = history.slice(0, 50);
+        }
+
+        chrome.storage.local.set({ clipboardHistory: history }, () => {
+             debugLog(`Background: Added item to history. New length: ${history.length}`);
+        });
+    });
+}
+
+function getClipboardHistory(sendResponse) {
+    chrome.storage.local.get('clipboardHistory', function(data) {
+        sendResponse({ history: data.clipboardHistory || [] });
+    });
+}
+
+function clearClipboardHistory(sendResponse) {
+    chrome.storage.local.set({ clipboardHistory: [] }, function() {
+        lastClipboardContent = ''; // Reset last known content
+        debugLog("Background: Clipboard history cleared.");
+        sendResponse({ success: true });
+    });
 }
 
 // --- LLM Logging Functions ---
@@ -463,97 +507,20 @@ async function addAcceptedLogEntry(logEntry) {
     }
 }
 
-// --- Command Handling ---
-chrome.commands.onCommand.addListener(async (command) => {
-    debugLog(`Background: Command received: ${command}`);
-    // Find the active tab
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+// Optional: Close offscreen document after a period of inactivity
+// let inactivityTimeout = null;
+// const INACTIVITY_DELAY_MS = 30000; // 30 seconds
 
-    if (!activeTab || !activeTab.id) {
-        // Keep warning visible
-        console.warn("Background: Could not find active tab to send command to.");
-        return;
-    }
-
-    let messageAction = null;
-    if (command === 'trigger-llm-suggestion') {
-        messageAction = 'requestContextForManualTrigger';
-    } else if (command === 'fill-suggestion-word') {
-        messageAction = 'fillWordByWord';
-    } else if (command === 'commit-suggestion-alias') {
-        messageAction = 'commitSuggestionAlias';
-    }
-
-    if (messageAction) {
-        debugLog(`Background: Sending ${messageAction} to tab ${activeTab.id}`);
-        try {
-            // Send the appropriate message to the content script in the active tab
-            await chrome.tabs.sendMessage(activeTab.id, { action: messageAction });
-        } catch (error) {
-            // Keep errors visible
-            console.error(`Background: Error sending message to tab ${activeTab.id}:`, error);
-            // Handle potential errors, e.g., content script not injected or tab closed
-        }
-    } else {
-         debugWarn(`Background: Unknown command received: ${command}`);
-    }
-});
-
-// --- Clipboard History Storage ---
-function addToClipboardHistory(text) {
-    if (!text || text.trim() === '') {
-         debugLog("Skipping empty text");
-         return;
-    }
-
-    chrome.storage.local.get('clipboardHistory', function(data) {
-        let history = data.clipboardHistory || [];
-
-        // Prevent exact duplicates
-        const isDuplicate = history.some(item => item.text === text);
-        if (isDuplicate) {
-             debugLog("Skipping duplicate text");
-             return;
-        }
-
-        // Add new entry at the beginning
-        history.unshift({
-            text: text,
-            timestamp: new Date().toISOString()
-        });
-
-        // Limit history to 50 items
-        if (history.length > 50) {
-            history = history.slice(0, 50);
-        }
-
-        chrome.storage.local.set({ clipboardHistory: history }, () => {
-             debugLog(`Added item to history. New length: ${history.length}`);
-        });
-    });
-}
-
-async function deleteClipboardItem(id, sendResponse) {
-    try {
-        const result = await chrome.storage.local.get('clipboardHistory');
-        const history = result.clipboardHistory || [];
-        const updatedHistory = history.filter(item => item.id !== id);
-        await chrome.storage.local.set({ clipboardHistory: updatedHistory });
-        debugLog(`Background: Deleted clipboard item with ID ${id}`);
-        sendResponse({ success: true });
-    } catch (error) {
-        debugError("Background: Error deleting clipboard item:", error);
-        sendResponse({ success: false, error: error.message });
-    }
-}
-
-async function clearClipboardHistory(sendResponse) {
-    try {
-        await chrome.storage.local.set({ clipboardHistory: [] });
-        debugLog("Background: Cleared clipboard history");
-        sendResponse({ success: true });
-    } catch (error) {
-        debugError("Background: Error clearing clipboard history:", error);
-        sendResponse({ success: false, error: error.message });
-    }
-} 
+// function resetInactivityTimeout() {
+//   if (inactivityTimeout) {
+//     clearTimeout(inactivityTimeout);
+//   }
+//   inactivityTimeout = setTimeout(async () => {
+//     if (await hasOffscreenDocument()) {
+//        console.log("Closing offscreen document due to inactivity.");
+//        chrome.offscreen.closeDocument();
+//     }
+//     inactivityTimeout = null;
+//   }, INACTIVITY_DELAY_MS);
+// }
+// // Call resetInactivityTimeout() whenever the offscreen document is used. 
