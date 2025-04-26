@@ -1,0 +1,220 @@
+/* clipboard.css - Styles for clipboard history UI */
+
+body 
+{
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+.container 
+{
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+h1 
+{
+    color: #444;
+    margin-top: 0;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.header-actions 
+{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.search-bar 
+{
+    display: flex;
+    flex: 1;
+    max-width: 500px;
+}
+
+#filter-input 
+{
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.action-buttons 
+{
+    display: flex;
+    gap: 10px;
+}
+
+button 
+{
+    padding: 8px 12px;
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+button:hover 
+{
+    background-color: #e0e0e0;
+}
+
+#clear-history 
+{
+    background-color: #ff6b6b;
+    color: white;
+    border-color: #ff5252;
+}
+
+#clear-history:hover 
+{
+    background-color: #ff5252;
+}
+
+#refresh-history 
+{
+    background-color: #f0f0f0;
+    color: #333;
+    border-color: #ddd;
+}
+
+#refresh-history:hover 
+{
+    background-color: #e0e0e0;
+}
+
+.clipboard-item 
+{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    transition: background-color 0.2s;
+}
+
+.clipboard-item:hover 
+{
+    background-color: #f9f9f9;
+}
+
+.item-content 
+{
+    flex: 1;
+    margin-right: 20px;
+    overflow: hidden;
+}
+
+.item-text 
+{
+    font-size: 14px;
+    margin-bottom: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.item-timestamp 
+{
+    font-size: 12px;
+    color: #999;
+}
+
+.item-actions 
+{
+    display: flex;
+    gap: 8px;
+}
+
+.copy-btn 
+{
+    background-color: #2196f3;
+    color: white;
+    border-color: #1e88e5;
+}
+
+.copy-btn:hover 
+{
+    background-color: #1e88e5;
+}
+
+.delete-btn 
+{
+    background-color: #ff6b6b;
+    color: white;
+    border-color: #ff5252;
+}
+
+.delete-btn:hover 
+{
+    background-color: #ff5252;
+}
+
+.empty-message 
+{
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-style: italic;
+}
+
+.notification 
+{
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #4caf50;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    display: none;
+}
+
+.notification.error 
+{
+    background-color: #f44336;
+}
+
+/* Popup specific styles */
+.popup-container 
+{
+    width: 350px;
+    max-height: 450px;
+    overflow-y: auto;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar 
+{
+    width: 8px;
+}
+
+::-webkit-scrollbar-track 
+{
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb 
+{
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover 
+{
+    background: #555;
+} 

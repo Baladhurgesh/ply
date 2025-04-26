@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ghost Tab Options</title>
+    <style>
+        body { font-family: sans-serif; padding: 10px; width: 450px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="url"], input[type="password"], input[type="text"] { width: 95%; margin-bottom: 15px; padding: 6px; border: 1px solid #ccc; border-radius: 3px;}
+        button { padding: 8px 15px; margin-top: 10px;}
+        #status { margin-top: 15px; font-weight: bold; color: green; }
+        .section { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;}
+        h2 { margin-top: 0; color: #333; font-size: 1.1em;}
+    </style>
+</head>
+<body>
+    <h1>Ghost Tab Options</h1>
+
+    <div class="section">
+        <h2>Ghost Text Backend (Optional)</h2>
+        <label for="backendUrl">Backend URL:</label>
+        <input type="url" id="backendUrl" name="backendUrl" placeholder="http://localhost:5000/receive_context">
+    </div>
+
+    <div class="section">
+        <h2>Clipboard Relevance (Claude API)</h2>
+        <label for="claudeApiKey">Anthropic API Key:</label>
+        <input type="password" id="claudeApiKey" name="claudeApiKey" placeholder="Enter your Claude API Key">
+        <p style="font-size: 0.8em; color: #666;">Needed for ranking clipboard items based on context. Get yours from Anthropic.</p>
+    </div>
+
+    <div class="section">
+        <h2>LLM Interaction Logs</h2>
+        <p style="font-size: 0.8em; color: #666;">Download or clear the stored logs of prompts and responses sent to the LLM.</p>
+        <button id="downloadLogs">Download Logs</button>
+        <button id="clearLogs" style="background-color: #ffcdd2; border-color: #ef9a9a; color: #b71c1c;">Clear Logs</button>
+        <div id="logStatus" style="margin-top: 10px; font-size: 0.9em;"></div>
+    </div>
+
+    <button id="save">Save Options</button>
+    <div id="status"></div>
+
+    <script src="options.js"></script>
+</body>
+</html> 

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clipboard History - Ghost Tab</title>
+    <link rel="stylesheet" href="clipboard.css">
+</head>
+<body>
+    <div class="container popup-container">
+        <h1>Clipboard History</h1>
+        
+        <div class="header-actions">
+            <div class="search-bar">
+                <input type="text" id="filter-input" placeholder="Search clipboard items...">
+            </div>
+            <div class="action-buttons">
+                <button id="refresh-history" title="Refresh clipboard history">Refresh</button>
+                <button id="clear-history">Clear All</button>
+            </div>
+        </div>
+        
+        <div id="clipboard-history">
+            <!-- Clipboard items will be added here dynamically -->
+            <div class="empty-message">Loading clipboard history...</div>
+        </div>
+    </div>
+    
+    <div id="notification" class="notification"></div>
+    
+    <script src="clipboard.js"></script>
+</body>
+</html> 
