@@ -10,7 +10,7 @@ const MAX_CLIPBOARD_ITEMS_FOR_PROMPT = 50; // Limit how many items we send to ke
 const FORMATTING_RULES = [
   {
     match: /mail\.google\.com|outlook\.live\.com|outlook\.office\.com/i, // Added outlook variants
-    instructions: "Format the response as a professional email. Use appropriate greeting, clear body paragraphs, and a standard sign-off."
+    instructions: "Format the response as an email. Use appropriate greeting, clear body paragraphs, and a standard sign-off. Do not include any surrounding text, code fences, or explanations. Make sure to address the tone of the email to the recipient."
   },
   {
     match: /github\.com|gitlab\.com|bitbucket\.org|stackoverflow\.com/i, // Added alternatives
@@ -22,7 +22,7 @@ const FORMATTING_RULES = [
   },
   {
     match: /linkedin\.com\/(feed|posts?)/i, // Match feed or post pages
-    instructions: "Format the response as a LinkedIn post: start with a punchy first line (hook), use bullet points or short paragraphs for readability, include relevant hashtags if appropriate, and maintain a professional but engaging tone. Avoid corporate jargon."
+    instructions: "Format the response as a professional LinkedIn post: start with a punchy first line (hook), use bullet points or short paragraphs for readability, include relevant hashtags if appropriate, and maintain a professional but engaging tone. Avoid corporate jargon. Do not include any surrounding text, code fences, or explanations."
   },
   // Add more rules here as needed
 ];
