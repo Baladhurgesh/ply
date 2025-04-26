@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clipboard Viewer</title>
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+            min-width: 350px;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            width: auto;
+            margin: 0;
+            border-radius: 0;
+            box-shadow: none;
+            max-height: 450px;
+            overflow-y: auto;
+        }
+        
+        h1 {
+            font-size: 16px;
+            padding: 8px 12px;
+            margin: 0;
+            background-color: #f5f5f5;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .header-actions {
+            padding: 8px 12px;
+            display: flex;
+            gap: 8px;
+            background-color: #f5f5f5;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .search-bar {
+            flex: 1;
+        }
+        
+        #filter-input {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        button {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #f0f0f0;
+        }
+        
+        #clear-history {
+            background-color: #ff4444;
+            color: white;
+            border-color: #cc0000;
+        }
+        
+        #clear-history:hover {
+            background-color: #cc0000;
+        }
+        
+        .clipboard-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e0e0e0;
+            position: relative;
+        }
+        
+        .clipboard-item:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .item-text {
+            font-size: 12px;
+            margin-bottom: 4px;
+            word-wrap: break-word;
+        }
+        
+        .item-timestamp {
+            font-size: 10px;
+            color: #666;
+        }
+        
+        .delete-btn {
+            position: absolute;
+            right: 12px;
+            top: 10px;
+            background-color: transparent;
+            color: #666;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        
+        .delete-btn:hover {
+            color: #ff4444;
+        }
+        
+        .empty-message {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+        
+        #notification {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Recent Clipboard Items</h1>
+        
+        <div class="header-actions">
+            <div class="search-bar">
+                <input type="text" id="filter-input" placeholder="Search...">
+            </div>
+            <div class="action-buttons">
+                <button id="refreshButton">Refresh</button>
+                <button id="clear-history">Clear</button>
+            </div>
+        </div>
+        
+        <div id="clipboardHistory">
+            <div class="empty-message">Loading clipboard history...</div>
+        </div>
+    </div>
+    
+    <div id="notification" class="notification"></div>
+    
+    <script src="popup.js"></script>
+</body>
+</html> 
