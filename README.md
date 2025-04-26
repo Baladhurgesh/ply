@@ -1,6 +1,6 @@
-# Ghost Tab - Clipboard Manager
+# Ply - Tab Complete Everywhere
 
-Ghost Tab is a Chrome extension that provides a smart clipboard history for your browser. It captures everything you copy (Ctrl+C) on any web page and makes it available in a searchable, filterable popup. You can also quickly copy or delete any previous clipboard item.
+Ply is a Chrome extension that provides a smart clipboard history for your browser. It captures everything you copy (Ctrl+C) on any web page and makes it available in a searchable, filterable popup. You can also quickly copy or delete any previous clipboard item.
 
 ---
 
