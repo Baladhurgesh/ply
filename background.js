@@ -118,42 +118,74 @@ async function initializeStorage() {
 
 // --- Initialization ---
 async function initializeExtension() {
-    debugLog("Initializing extension...");
-    
-    // Request permissions first
-    const permissionsGranted = await requestPermissions();
-    if (!permissionsGranted) {
-        debugError("Required permissions not granted");
-        return false;
+    if (isInitialized) {
+        debugLog("Extension already initialized");
+        return true;
     }
-    
-    // Create offscreen document
-    const offscreenCreated = await createOffscreenDocument();
-    if (!offscreenCreated) {
-        debugError("Failed to create offscreen document");
-        return false;
+
+    if (initializationPromise) {
+        debugLog("Initialization already in progress");
+        return initializationPromise;
     }
-    
-    // Initialize storage
-    const storageInitialized = await initializeStorage();
-    if (!storageInitialized) {
-        debugError("Failed to initialize storage");
-        return false;
+
+    if (initializationAttempts >= MAX_INIT_ATTEMPTS) {
+        debugError("Max initialization attempts reached");
+        throw new Error("Max initialization attempts reached");
     }
-    
-    debugLog("Extension initialized successfully");
-    return true;
+
+    initializationAttempts++;
+    debugLog(`Starting initialization attempt ${initializationAttempts}`);
+
+    initializationPromise = (async () => {
+        try {
+            // Initialize storage
+            const currentStorage = await chrome.storage.local.get('clipboardHistory');
+            if (!currentStorage.clipboardHistory) {
+                await chrome.storage.local.set({ clipboardHistory: [...DEFAULT_CLIPBOARD_ITEMS] });
+                debugLog("Clipboard history initialized with defaults");
+            }
+
+            // Initialize other storage keys
+            await chrome.storage.sync.set({ claudeApiKey: '' });
+            await chrome.storage.local.set({ llmLogs: [] });
+            await chrome.storage.local.set({ acceptedSuggestionsLog: [] });
+
+            // Setup context menu
+            await setupContextMenu();
+
+            // Start clipboard monitoring
+            await startClipboardMonitoring();
+
+            isInitialized = true;
+            debugLog("Extension initialized successfully");
+            return true;
+        } catch (error) {
+            debugError("Error during initialization:", error);
+            isInitialized = false;
+            throw error;
+        } finally {
+            initializationPromise = null;
+        }
+    })();
+
+    return initializationPromise;
 }
 
 // --- Event Listeners ---
-chrome.runtime.onInstalled.addListener(() => {
-    debugLog("Extension installed");
-    initializeExtension();
+chrome.runtime.onInstalled.addListener(async () => {
+    try {
+        await initializeExtension();
+    } catch (error) {
+        debugError("Failed to initialize on install:", error);
+    }
 });
 
-chrome.runtime.onStartup.addListener(() => {
-    debugLog("Extension started");
-    initializeExtension();
+chrome.runtime.onStartup.addListener(async () => {
+    try {
+        await initializeExtension();
+    } catch (error) {
+        debugError("Failed to initialize on startup:", error);
+    }
 });
 
 // --- Context Menu ---
@@ -223,29 +255,29 @@ async function hasOffscreenDocument() {
 }
 
 async function setupOffscreenDocument() {
-    try {
-        if (await hasOffscreenDocument()) {
-            debugLog("Offscreen document already exists.");
-            return;
-        }
+    if (await hasOffscreenDocument()) {
+        debugLog("Offscreen document already exists");
+        return;
+    }
 
-        if (creatingOffscreenDocument) {
-            debugLog("Offscreen document creation already in progress. Waiting...");
-            await creatingOffscreenDocument;
-            return;
-        }
-
-        debugLog("Creating offscreen document...");
-        creatingOffscreenDocument = chrome.offscreen.createDocument({
-            url: OFFSCREEN_DOCUMENT_PATH,
-            reasons: [chrome.offscreen.Reason.CLIPBOARD],
-            justification: 'Reading clipboard text requires DOM access.',
-        });
-
+    if (creatingOffscreenDocument) {
+        debugLog("Offscreen document creation already in progress");
         await creatingOffscreenDocument;
-        debugLog("Offscreen document created successfully.");
+        return;
+    }
+
+    debugLog("Creating offscreen document...");
+    creatingOffscreenDocument = chrome.offscreen.createDocument({
+        url: OFFSCREEN_DOCUMENT_PATH,
+        reasons: [chrome.offscreen.Reason.CLIPBOARD],
+        justification: 'Reading clipboard text requires DOM access'
+    });
+
+    try {
+        await creatingOffscreenDocument;
+        debugLog("Offscreen document created successfully");
     } catch (error) {
-        debugError("Failed to create offscreen document:", error);
+        debugError("Error creating offscreen document:", error);
         throw error;
     } finally {
         creatingOffscreenDocument = null;
@@ -256,62 +288,47 @@ async function setupOffscreenDocument() {
 async function readClipboardViaOffscreen() {
     await setupOffscreenDocument(); // Ensure the document exists
 
-    debugLog("Background: Sending message to offscreen document to read clipboard...");
+    debugLog("Sending message to offscreen document...");
     try {
         const response = await chrome.runtime.sendMessage({
             type: 'read-clipboard',
-            target: 'offscreen',
+            target: 'offscreen'
         });
-        debugLog("Background: Received response from offscreen:", response);
+        
         if (response && response.success) {
             return response.text;
         } else {
-             throw new Error(response?.error || 'Failed to read clipboard via offscreen document.');
+            throw new Error(response?.error || 'Failed to read clipboard');
         }
     } catch (error) {
-         // Handle potential errors like the offscreen document not being ready
-         if (error.message.includes("Could not establish connection")) {
-             // Keep warnings visible
-             console.warn("Background: Connection to offscreen document failed. It might be closing or not ready. Retrying setup might be needed.");
-             // Optionally, implement retry logic or clearer error handling here
-         } else {
-            // Keep errors visible
-            console.error("Background: Error messaging offscreen document:", error);
-         }
-         return null; // Indicate failure
+        if (error.message.includes("Could not establish connection")) {
+            debugWarn("Connection to offscreen document failed");
+        } else {
+            debugError("Error reading clipboard:", error);
+        }
+        return null;
     }
 }
 
 // --- Core Clipboard Check Logic ---
 async function checkClipboard(callback) {
-    debugLog("Background: checkClipboard called");
+    debugLog("Checking clipboard...");
     try {
         const clipText = await readClipboardViaOffscreen();
 
-        if (clipText !== null) { // Check if read was successful
-             debugLog(`Background: Clipboard content received: "${clipText ? clipText.substring(0, 30) + '...' : '<empty>'}"`);
-            // Only process if the clipboard content has changed
+        if (clipText !== null) {
+            debugLog(`Clipboard content: "${clipText ? clipText.substring(0, 30) + '...' : '<empty>'}"`);
+            
             if (clipText && clipText !== lastClipboardContent) {
-                debugLog("Background: Clipboard content changed. Updating history.");
+                debugLog("Clipboard content changed");
                 lastClipboardContent = clipText;
                 addToClipboardHistory(clipText);
-            } else if (clipText === lastClipboardContent) {
-                 debugLog("Background: Clipboard content unchanged.");
-            } else {
-                 debugLog("Background: Clipboard content is empty.");
             }
-        } else {
-            // Keep warning visible
-            console.warn("Background: Failed to read clipboard content via offscreen.");
         }
-
-    } catch (e) {
-        // Keep errors visible
-        console.error('Background: Failed to check clipboard:', e);
+    } catch (error) {
+        debugError("Error checking clipboard:", error);
     } finally {
-        // Execute callback if provided, regardless of success/failure
         if (typeof callback === 'function') {
-            debugLog("Background: Executing checkClipboard callback.");
             callback();
         }
     }
@@ -320,35 +337,75 @@ async function checkClipboard(callback) {
 // --- Message Handling ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     debugLog("Received message:", message);
-    
-    if (message.action === 'getClipboardHistory') {
-        debugLog("Getting clipboard history...");
-        sendResponse({ success: true, history: clipboardHistory });
+
+    if (!message || !message.action) {
+        debugWarn("Invalid message format");
+        sendResponse({ success: false, error: "Invalid message format" });
         return false;
     }
-    
-    if (message.action === 'addToClipboardHistory') {
-        debugLog("Adding to clipboard history...");
-        const newItem = {
-            text: message.text,
-            timestamp: Date.now()
-        };
-        clipboardHistory.unshift(newItem);
-        chrome.storage.local.set({ clipboardHistory });
-        sendResponse({ success: true });
+
+    if (message.action === 'checkInitialization') {
+        debugLog("Checking initialization status");
+        sendResponse({ success: true, initialized: isInitialized });
         return false;
     }
-    
-    if (message.action === 'clearClipboardHistory') {
-        debugLog("Clearing clipboard history...");
-        clipboardHistory = [];
-        chrome.storage.local.set({ clipboardHistory });
-        sendResponse({ success: true });
-        return false;
+
+    if (!isInitialized) {
+        debugWarn("Extension not initialized yet");
+        initializeExtension()
+            .then(() => handleMessage(message, sender, sendResponse))
+            .catch(error => {
+                debugError("Initialization failed:", error);
+                sendResponse({ 
+                    success: false, 
+                    error: "Initialization failed: " + error.message,
+                    retryable: initializationAttempts < MAX_INIT_ATTEMPTS
+                });
+            });
+        return true;
     }
-    
-    return false;
+
+    return handleMessage(message, sender, sendResponse);
 });
+
+async function handleMessage(message, sender, sendResponse) {
+    try {
+        switch (message.action) {
+            case 'getClipboardHistory':
+                debugLog("Getting clipboard history");
+                const result = await chrome.storage.local.get('clipboardHistory');
+                sendResponse({ success: true, items: result.clipboardHistory || [] });
+                return false;
+
+            case 'addToClipboard':
+                debugLog("Adding to clipboard history");
+                addToClipboardHistory(message.text);
+                sendResponse({ success: true });
+                return false;
+
+            case 'clearClipboardHistory':
+                debugLog("Clearing clipboard history");
+                await chrome.storage.local.set({ clipboardHistory: [] });
+                lastClipboardContent = '';
+                sendResponse({ success: true });
+                return false;
+
+            case 'checkClipboard':
+                debugLog("Checking clipboard");
+                checkClipboard(() => sendResponse({ success: true }));
+                return true;
+
+            default:
+                debugWarn("Unknown action:", message.action);
+                sendResponse({ success: false, error: "Unknown action" });
+                return false;
+        }
+    } catch (error) {
+        debugError("Error handling message:", error);
+        sendResponse({ success: false, error: error.message });
+        return false;
+    }
+}
 
 // --- LLM Logging Functions ---
 async function addLogEntry(logEntry) {
@@ -445,8 +502,8 @@ chrome.commands.onCommand.addListener(async (command) => {
 // --- Clipboard History Storage ---
 function addToClipboardHistory(text) {
     if (!text || text.trim() === '') {
-         debugLog("Background: Skipping adding empty text to history.");
-         return; // Don't add empty text
+         debugLog("Skipping empty text");
+         return;
     }
 
     chrome.storage.local.get('clipboardHistory', function(data) {
@@ -455,7 +512,7 @@ function addToClipboardHistory(text) {
         // Prevent exact duplicates
         const isDuplicate = history.some(item => item.text === text);
         if (isDuplicate) {
-             debugLog("Background: Skipping duplicate text entry.");
+             debugLog("Skipping duplicate text");
              return;
         }
 
@@ -471,7 +528,7 @@ function addToClipboardHistory(text) {
         }
 
         chrome.storage.local.set({ clipboardHistory: history }, () => {
-             debugLog(`Background: Added item to history. New length: ${history.length}`);
+             debugLog(`Added item to history. New length: ${history.length}`);
         });
     });
 }

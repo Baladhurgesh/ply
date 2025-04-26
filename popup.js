@@ -1,210 +1,168 @@
-// --- Debug Flag ---
-const DEBUG_MODE = true; // Set to true to enable popup script logging
+// clipboard.js - Handles clipboard event detection and UI interaction
 
-// --- Helper Debug Logging Functions ---
-function debugLog(...args) {
-    if (DEBUG_MODE) {
-        console.log("POPUP LOG:", ...args);
+document.addEventListener('DOMContentLoaded', function() 
+{
+    // Show loading state first
+    const historyContainer = document.getElementById('clipboard-history');
+    historyContainer.innerHTML = '<div class="empty-message">Loading clipboard history...</div>';
+    
+    // Request a clipboard check and wait for it to complete before loading history
+    chrome.runtime.sendMessage({ action: 'checkClipboard' }, function() {
+        // After clipboard check completes, load the history with a small delay to ensure storage is updated
+        setTimeout(loadClipboardHistory, 150);
+    });
+    
+    // Set up event listeners for UI buttons
+    document.getElementById('clear-history').addEventListener('click', clearHistory);
+    document.getElementById('refresh-history').addEventListener('click', function() {
+        // Show loading indicator
+        historyContainer.innerHTML = '<div class="empty-message">Refreshing clipboard history...</div>';
+        
+        // Try to capture the latest clipboard content and then refresh the view
+        chrome.runtime.sendMessage({ action: 'checkClipboard' }, function() {
+            // Wait a bit to ensure storage is updated
+            setTimeout(loadClipboardHistory, 150);
+        });
+    });
+    
+    // Handle filtering
+    document.getElementById('filter-input').addEventListener('input', filterClipboardItems);
+});
+
+// Load clipboard history from storage and display in UI
+function loadClipboardHistory() 
+{
+    chrome.runtime.sendMessage({ action: 'getClipboardHistory' }, function(response) {
+        const historyContainer = document.getElementById('clipboard-history');
+        historyContainer.innerHTML = ''; // Clear existing items
+        
+        if (!response.history || response.history.length === 0) {
+            historyContainer.innerHTML = '<div class="empty-message">No clipboard history found</div>';
+            return;
+        }
+        
+        // Create clipboard items
+        response.history.forEach(item => {
+            const clipboardItem = createClipboardItemElement(item);
+            historyContainer.appendChild(clipboardItem);
+        });
+    });
+}
+
+// Create a clipboard item element
+function createClipboardItemElement(item) 
+{
+    const clipboardItem = document.createElement('div');
+    clipboardItem.className = 'clipboard-item';
+    
+    // Format the timestamp
+    const timestamp = new Date(item.timestamp);
+    const formattedDate = timestamp.toLocaleDateString();
+    const formattedTime = timestamp.toLocaleTimeString();
+    
+    // Truncate text if it's too long for preview
+    const displayText = item.text.length > 100 
+        ? item.text.substring(0, 100) + '...' 
+        : item.text;
+    
+    // Set the HTML content
+    clipboardItem.innerHTML = `
+        <div class="item-content">
+            <div class="item-text">${displayText}</div>
+            <div class="item-timestamp">${formattedDate} ${formattedTime}</div>
+        </div>
+        <div class="item-actions">
+            <button class="copy-btn" title="Copy to clipboard">Copy</button>
+            <button class="delete-btn" title="Delete from history">Delete</button>
+        </div>
+    `;
+    
+    // Store the full text as a data attribute
+    clipboardItem.dataset.text = item.text;
+    
+    // Set up event listeners for the buttons
+    clipboardItem.querySelector('.copy-btn').addEventListener('click', function() {
+        copyToClipboard(item.text);
+    });
+    
+    clipboardItem.querySelector('.delete-btn').addEventListener('click', function() {
+        deleteClipboardItem(clipboardItem, item.text);
+    });
+    
+    return clipboardItem;
+}
+
+// Copy text to clipboard
+function copyToClipboard(text) 
+{
+    navigator.clipboard.writeText(text).then(() => {
+        showNotification('Copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+        showNotification('Failed to copy text', true);
+    });
+}
+
+// Delete an item from clipboard history
+function deleteClipboardItem(element, text) 
+{
+    chrome.runtime.sendMessage({ action: 'getClipboardHistory' }, function(response) {
+        const history = response.history || [];
+        const updatedHistory = history.filter(item => item.text !== text);
+        
+        chrome.storage.local.set({ clipboardHistory: updatedHistory }, function() {
+            element.remove();
+            showNotification('Item deleted');
+            
+            // Show empty message if history is now empty
+            if (updatedHistory.length === 0) {
+                const historyContainer = document.getElementById('clipboard-history');
+                historyContainer.innerHTML = '<div class="empty-message">No clipboard history found</div>';
+            }
+        });
+    });
+}
+
+// Filter clipboard items based on search input
+function filterClipboardItems() 
+{
+    const filterText = document.getElementById('filter-input').value.toLowerCase();
+    const clipboardItems = document.querySelectorAll('.clipboard-item');
+    
+    clipboardItems.forEach(item => {
+        const itemText = item.dataset.text.toLowerCase();
+        if (itemText.includes(filterText)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+// Clear all clipboard history
+function clearHistory() 
+{
+    if (confirm('Are you sure you want to clear all clipboard history?')) {
+        chrome.runtime.sendMessage({ action: 'clearClipboardHistory' }, function(response) {
+            if (response.success) {
+                const historyContainer = document.getElementById('clipboard-history');
+                historyContainer.innerHTML = '<div class="empty-message">No clipboard history found</div>';
+                showNotification('Clipboard history cleared');
+            }
+        });
     }
 }
-function debugWarn(...args) {
-    if (DEBUG_MODE) {
-        console.warn("POPUP WARN:", ...args);
-    }
-}
-function debugError(...args) {
-    if (DEBUG_MODE) {
-        console.error("POPUP ERROR:", ...args);
-    }
-}
 
-// --- DOM Elements ---
-const clipboardItems = document.getElementById('clipboardItems');
-const refreshButton = document.getElementById('refreshButton');
-const clearHistoryButton = document.getElementById('clearHistoryButton');
-const filterInput = document.getElementById('filterInput');
-const notification = document.getElementById('notification');
-
-// --- Helper Functions ---
-function formatTimestamp(timestamp) {
-    const date = new Date(timestamp);
-    return date.toLocaleString();
-}
-
-function showNotification(message, type = 'success') {
+// Show notification message
+function showNotification(message, isError = false) 
+{
+    const notification = document.getElementById('notification');
     notification.textContent = message;
-    notification.className = `notification ${type}`;
+    notification.className = isError ? 'notification error' : 'notification';
     notification.style.display = 'block';
     
+    // Hide notification after 3 seconds
     setTimeout(() => {
         notification.style.display = 'none';
     }, 3000);
-}
-
-function createClipboardItemElement(item) {
-    const div = document.createElement('div');
-    div.className = 'clipboard-item';
-    
-    const text = document.createElement('div');
-    text.className = 'item-text';
-    text.textContent = item.text;
-    
-    const timestamp = document.createElement('div');
-    timestamp.className = 'item-timestamp';
-    timestamp.textContent = formatTimestamp(item.timestamp);
-    
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'delete-btn';
-    deleteBtn.innerHTML = '×';
-    deleteBtn.title = 'Delete item';
-    deleteBtn.addEventListener('click', () => {
-        chrome.runtime.sendMessage({ 
-            action: 'deleteClipboardItem', 
-            id: item.id 
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                debugError('Error deleting item:', chrome.runtime.lastError);
-                showNotification('Error deleting item: ' + chrome.runtime.lastError.message, 'error');
-                return;
-            }
-
-            if (response && response.success) {
-                div.remove();
-                showNotification('Item deleted');
-            } else {
-                showNotification('Error deleting item: ' + (response?.error || 'Unknown error'), 'error');
-            }
-        });
-    });
-    
-    div.appendChild(text);
-    div.appendChild(timestamp);
-    div.appendChild(deleteBtn);
-    
-    return div;
-}
-
-function updateClipboardDisplay(items, filter = '') {
-    clipboardItems.innerHTML = '';
-    
-    if (!items || items.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'empty-message';
-        emptyMessage.textContent = 'No clipboard items found';
-        clipboardItems.appendChild(emptyMessage);
-        return;
-    }
-    
-    const filteredItems = filter
-        ? items.filter(item => item.text.toLowerCase().includes(filter.toLowerCase()))
-        : items;
-    
-    if (filteredItems.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'empty-message';
-        emptyMessage.textContent = 'No items match your search';
-        clipboardItems.appendChild(emptyMessage);
-        return;
-    }
-    
-    filteredItems.forEach(item => {
-        clipboardItems.appendChild(createClipboardItemElement(item));
-    });
-}
-
-// --- Clipboard History Management ---
-async function checkInitialization(retryCount = 0) {
-    return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ action: 'checkInitialization' }, (response) => {
-            if (chrome.runtime.lastError) {
-                debugError('Error checking initialization:', chrome.runtime.lastError);
-                resolve({ initialized: false, error: chrome.runtime.lastError });
-                return;
-            }
-            resolve(response);
-        });
-    });
-}
-
-async function loadClipboardHistory(retryCount = 0) {
-    debugLog('Loading clipboard history...');
-    
-    // Show loading state
-    clipboardItems.innerHTML = '<div class="empty-message">Loading clipboard history...</div>';
-    
-    try {
-        // First check if extension is initialized
-        const initResponse = await checkInitialization();
-        if (!initResponse.initialized) {
-            if (retryCount < 5) { // Limit retries to 5 attempts
-                debugLog('Extension not initialized yet, waiting... (attempt ' + (retryCount + 1) + ')');
-                showNotification('Please wait while the extension initializes...', 'info');
-                setTimeout(() => loadClipboardHistory(retryCount + 1), 1000);
-                return;
-            } else {
-                debugError('Max retry attempts reached');
-                showNotification('Failed to initialize extension. Please try again.', 'error');
-                return;
-            }
-        }
-        
-        // Extension is initialized, proceed with loading history
-        chrome.runtime.sendMessage({ action: 'getClipboardHistory' }, (response) => {
-            if (chrome.runtime.lastError) {
-                debugError('Error loading clipboard history:', chrome.runtime.lastError);
-                showNotification('Error loading clipboard history: ' + chrome.runtime.lastError.message, 'error');
-                return;
-            }
-
-            if (response && response.success) {
-                debugLog(`Loaded ${response.items.length} clipboard items`);
-                updateClipboardDisplay(response.items);
-            } else {
-                debugError('Failed to load clipboard history:', response?.error);
-                showNotification('Error loading clipboard history: ' + (response?.error || 'Unknown error'), 'error');
-            }
-        });
-    } catch (error) {
-        debugError('Error in loadClipboardHistory:', error);
-        showNotification('Error loading clipboard history: ' + error.message, 'error');
-    }
-}
-
-// --- Event Listeners ---
-refreshButton.addEventListener('click', () => {
-    debugLog('Refresh button clicked');
-    loadClipboardHistory();
-});
-
-clearHistoryButton.addEventListener('click', () => {
-    debugLog('Clear history button clicked');
-    if (confirm('Are you sure you want to clear all clipboard history?')) {
-        chrome.runtime.sendMessage({ action: 'clearClipboardHistory' }, (response) => {
-            if (chrome.runtime.lastError) {
-                debugError('Error clearing clipboard history:', chrome.runtime.lastError);
-                showNotification('Error clearing history: ' + chrome.runtime.lastError.message, 'error');
-                return;
-            }
-
-            if (response && response.success) {
-                debugLog('Clipboard history cleared');
-                updateClipboardDisplay([]);
-                showNotification('History cleared');
-            } else {
-                debugError('Failed to clear clipboard history:', response?.error);
-                showNotification('Error clearing history: ' + (response?.error || 'Unknown error'), 'error');
-            }
-        });
-    }
-});
-
-filterInput.addEventListener('input', () => {
-    debugLog('Filter input changed');
-    loadClipboardHistory();
-});
-
-// --- Initialization ---
-document.addEventListener('DOMContentLoaded', () => {
-    debugLog('Popup initialized');
-    loadClipboardHistory();
-}); 
+} 

@@ -1,20 +1,69 @@
 {
-  "manifest_version": 3,
-  "name": "Clipboard Viewer",
-  "version": "1.0",
-  "description": "A simple extension to view and manage clipboard content",
-  "permissions": ["clipboardRead", "storage"],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "images/icon16.png",
-      "48": "images/icon48.png",
-      "128": "images/icon128.png"
-    }
-  },
-  "icons": {
-    "16": "images/icon16.png",
-    "48": "images/icon48.png",
-    "128": "images/icon128.png"
-  }
+"manifest_version": 3,
+"name": "Ghost Tab with Clipboard History",
+"description": "Shows ghost suggestions in text inputs and maintains a history of clipboard items.",
+"version": "0.3.0",
+"icons": {
+"128": "icon.png"
+},
+"action": {
+"default_title": "Ghost Tab",
+"default_popup": "popup.html"
+},
+"permissions": [
+"activeTab",
+"scripting",
+"storage",
+"clipboardRead",
+"contextMenus",
+"tabs",
+"offscreen",
+"downloads",
+"commands",
+"clipboardWrite"
+],
+"background": {
+"service_worker": "background.js"
+},
+"content_scripts": [
+{
+"matches": ["<all_urls>"],
+"js": ["content.js"],
+"css": ["suggestion.css"],
+"run_at": "document_idle",
+"all_frames": true
+}
+],
+"options_ui": {
+"page": "options.html",
+"open_in_tab": true
+},
+"commands": {
+"trigger-llm-suggestion": {
+"suggested_key": {
+"mac": "Command+Shift+U",
+"default": "Alt+Shift+U"
+},
+"description": "Manually trigger LLM suggestion for the current field"
+},
+"fill-suggestion-word": {
+"suggested_key": {
+"mac": "Command+Shift+M",
+"default": "Ctrl+Shift+Right"
+},
+"description": "Fill the current suggestion word by word"
+},
+"commit-suggestion-alias": {
+"suggested_key": {
+"mac": "Command+Shift+9",
+"default": "Alt+Shift+9"
+},
+"description": "Commit the full suggestion (Tab alias)"
+}
+},
+"offscreen": {
+"reasons": ["CLIPBOARD"],
+"justification": "Reading clipboard text requires DOM access.",
+"document_path": "offscreen.html"
+}
 } 
